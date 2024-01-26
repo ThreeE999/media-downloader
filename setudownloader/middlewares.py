@@ -3,10 +3,11 @@
 # See documentation in:
 # https://docs.scrapy.org/en/latest/topics/spider-middleware.html
 
+import os
 from scrapy import signals
 # useful for handling different item types with a single interface
 from itemadapter import is_item, ItemAdapter
-from http.cookiejar import MozillaCookieJar
+from http.cookiejar import MozillaCookieJar, Cookie
 from requests.utils import dict_from_cookiejar
 
 class SetudownloaderSpiderMiddleware:
@@ -56,12 +57,34 @@ class SetudownloaderSpiderMiddleware:
         spider.logger.info("Spider opened: %s" % spider.name)
 
 
-class SetudownloaderBaseDownloaderMiddleware:
+def list_from_cookiejar(cj):
+    class _Cookie(Cookie):
+        # 为兼容默认的cookies下载中间件不支持get方法的问题
+        def get(self, name):
+            return getattr(self, name)
+
+        def __getitem__(self, name):
+            return getattr(self, name)
+        
+    for cookie in cj:
+        cookie.__class__ = _Cookie
+    return cj
+
+
+class BaseDownloaderMiddleware:
+    # 做代理配置cookie中间件
     def __init__(self, settings) -> None:
         self.proxy = settings.get("STD_HTTPPROXY")
+        cookies_file = settings.get("STD_COOKIES_FILE")
         cj = MozillaCookieJar()
-        cj.load(settings.get("STD_COOKIES_FILE"))
-        self.cookies = dict_from_cookiejar(cj)
+        if cookies_file:
+            cj.load(cookies_file)
+        else:
+            cookies_dir = settings.get("STD_COOKIES_DIR")
+            if cookies_dir:
+                for filename in os.listdir(cookies_dir):
+                    cj.load(os.path.join(cookies_dir, filename))
+        self.cookies = list_from_cookiejar(cj)
 
     @classmethod
     def from_crawler(cls, crawler):
@@ -73,10 +96,8 @@ class SetudownloaderBaseDownloaderMiddleware:
     def process_request(self, request, spider):
         if self.proxy:
             request.meta["proxy"] = self.proxy
-        request.cookies = self.cookies
-
-        if 'pixiv.net' in request.url:
-            request.headers['Referer'] = 'https://www.pixiv.net/discovery'
+        if self.cookies:
+            request.cookies = self.cookies
         return None
 
     def process_response(self, request, response, spider):

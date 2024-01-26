@@ -51,9 +51,9 @@ COOKIES_ENABLED = True
 
 # Enable or disable downloader middlewares
 # See https://docs.scrapy.org/en/latest/topics/downloader-middleware.html
-# DOWNLOADER_MIDDLEWARES = {
-#    "setudownloader.middlewares.SetudownloaderDownloaderMiddleware": 543,
-# }
+DOWNLOADER_MIDDLEWARES = {
+   "setudownloader.middlewares.BaseDownloaderMiddleware": 543,
+}
 
 # Enable or disable extensions
 # See https://docs.scrapy.org/en/latest/topics/extensions.html
@@ -63,9 +63,9 @@ COOKIES_ENABLED = True
 
 # Configure item pipelines
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
-#ITEM_PIPELINES = {
+# ITEM_PIPELINES = {
 #    "setudownloader.pipelines.SetudownloaderPipeline": 300,
-#}
+# }
 
 # Enable and configure the AutoThrottle extension (disabled by default)
 # See https://docs.scrapy.org/en/latest/topics/autothrottle.html
@@ -95,7 +95,16 @@ FEED_EXPORT_ENCODING = "utf-8"
 
 # 全局代理设置
 STD_HTTPPROXY = "http://127.0.0.1:10809"
-STD_COOKIES_FILE = "/home/picuser/ssdownloader/www.pixiv.net_cookies.txt"
+
+# 指定 cookie 路径
+STD_COOKIES_DIR = "./setudownloader/cookies"
+# 指定 cookie 文件, 非空值会使上面的路径失效
+# STD_COOKIES_FILE = "./setudownloader/cookies/www.pixiv.net_cookies.txt"
+
+# 作者信息，下载配置文件
+CONFIG_PATH = "./setudownloader/config.json"
+# 文件下载根路径
+FILES_STORE = "."
 
 # 默认请求头
 # DEFAULT_REQUEST_HEADERS = {
