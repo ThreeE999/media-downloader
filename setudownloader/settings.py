@@ -26,7 +26,7 @@ ROBOTSTXT_OBEY = False
 # Configure a delay for requests for the same website (default: 0)
 # See https://docs.scrapy.org/en/latest/topics/settings.html#download-delay
 # See also autothrottle settings and docs
-#DOWNLOAD_DELAY = 3
+DOWNLOAD_DELAY = 3
 # The download delay setting will honor only one of:
 #CONCURRENT_REQUESTS_PER_DOMAIN = 16
 #CONCURRENT_REQUESTS_PER_IP = 16
@@ -93,6 +93,9 @@ REQUEST_FINGERPRINTER_IMPLEMENTATION = "2.7"
 TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
 FEED_EXPORT_ENCODING = "utf-8"
 
+# CRITICAL, ERROR, WARNING, INFO, DEBUG
+LOG_LEVEL = "WARNING"
+
 # 全局代理设置
 STD_HTTPPROXY = "http://127.0.0.1:10809"
 
@@ -104,7 +107,7 @@ STD_COOKIES_DIR = "./setudownloader/cookies"
 # 作者信息，下载配置文件
 CONFIG_PATH = "./setudownloader/config.json"
 # 文件下载根路径
-FILES_STORE = "."
+FILES_STORE = "downloads"
 
 # 默认请求头
 # DEFAULT_REQUEST_HEADERS = {

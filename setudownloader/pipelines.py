@@ -28,7 +28,7 @@ class SqlitePipeline:
     def open_spider(self, spider):
         self.connect = sqlite3.connect(self.db_path)
         self.cursor = self.connect.cursor()
-        self.build()
+        spider.cursor = self.cursor
 
     def process_item(self, item, spider):
         return item
@@ -37,14 +37,9 @@ class SqlitePipeline:
         self.cursor.close()
         self.connect.close()
 
-    def build(self):
-        raise NotImplementedError(
-            f"{self.__class__.__name__}.build is not defined"
-        )
-
     def insert(self, table: str, data: dict):
         sql = f"""
-            INSERT INTO `{table}` ({','.join(data.keys())})
+            INSERT OR REPLACE INTO `{table}` ({','.join(data.keys())})
             VALUES ({', '.join(['?']*len(data))});
         """
         self.cursor.execute(sql, tuple(data.values()))
