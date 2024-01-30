@@ -3,6 +3,7 @@ import json
 import mimetypes
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 import scrapy
 import logging
 from datetime import date, datetime
@@ -125,7 +126,7 @@ class PixivDBPipeline(SqlitePipeline):
                 "illust_id": item["illust_id"],
                 "page": i,
                 "url": url,
-                "suffix": Path(url).suffix,
+                "suffix": Path(urlparse(url).path).suffix,
                 "is_download": True,
                 "is_delete": False
             }
@@ -157,7 +158,7 @@ class PixivFilesPipeline(FilesPipeline):
 
     def file_path(self, request, response=None, info=None, *, item=None):
         # 文件名处理
-        _path = Path(request.url)
+        _path = Path(urlparse(request.url).path)
         media_ext = _path.suffix
         if media_ext not in mimetypes.types_map:
             media_ext = ""
