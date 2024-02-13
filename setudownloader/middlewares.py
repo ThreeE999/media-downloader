@@ -8,7 +8,7 @@ from scrapy import signals
 # useful for handling different item types with a single interface
 from itemadapter import is_item, ItemAdapter
 from http.cookiejar import MozillaCookieJar, Cookie
-from requests.utils import dict_from_cookiejar
+from scrapy.exceptions import IgnoreRequest
 
 class SetudownloaderSpiderMiddleware:
     # Not all methods need to be defined. If a method is not defined,
@@ -40,9 +40,12 @@ class SetudownloaderSpiderMiddleware:
     def process_spider_exception(self, response, exception, spider):
         # Called when a spider or process_spider_input() method
         # (from other spider middleware) raises an exception.
-
         # Should return either None or an iterable of Request or item objects.
-        pass
+        if isinstance(exception, IgnoreRequest):
+            return None
+        spider.crawler.engine.close_spider(spider, reason="spider_exception")
+        spider.logger.error("Spider closed: %s" % exception)
+        spider.logger.error("response: %s" % response.text)
 
     def process_start_requests(self, start_requests, spider):
         # Called with the start requests of the spider, and works

@@ -13,7 +13,7 @@ ROBOTSTXT_OBEY = False
 #CONCURRENT_REQUESTS = 32
 
 # 对同一域的 2 个连续请求之间等待的最短秒数
-DOWNLOAD_DELAY = 3
+DOWNLOAD_DELAY = 0.6
 # https://docs.scrapy.org/en/latest/topics/settings.html#std-setting-CONCURRENT_REQUESTS_PER_DOMAIN
 CONCURRENT_REQUESTS_PER_DOMAIN = 16
 
@@ -56,9 +56,9 @@ DOWNLOADER_MIDDLEWARES = {
 # See https://docs.scrapy.org/en/latest/topics/autothrottle.html
 AUTOTHROTTLE_ENABLED = True
 # The initial download delay
-#AUTOTHROTTLE_START_DELAY = 5
+AUTOTHROTTLE_START_DELAY = 1
 # The maximum download delay to be set in case of high latencies
-#AUTOTHROTTLE_MAX_DELAY = 60
+AUTOTHROTTLE_MAX_DELAY = 20
 # The average number of requests Scrapy should be sending in parallel to
 # each remote server
 #AUTOTHROTTLE_TARGET_CONCURRENCY = 1.0
@@ -92,3 +92,6 @@ STD_HTTPPROXY = "http://127.0.0.1:10809"
 STD_COOKIES_DIR = "./setudownloader/cookies"
 # 作者信息，下载配置文件
 CONFIG_PATH = "./setudownloader/config.json"
+
+# 下载文件时404，忽略下载文件并存储至数据库, False每次404不会存储数据库，每次下载就会警告
+STD_IGNORE_FILES_DOWNLOAD_ON_404 = True

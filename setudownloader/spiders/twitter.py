@@ -3,22 +3,17 @@ import json
 import mimetypes
 import os
 from pathlib import Path
+import sqlite3
 import scrapy
 import logging
 from datetime import date, datetime
 from scrapy.utils.python import to_bytes
 from itemadapter import ItemAdapter
-from scrapy.pipelines.files import FilesPipeline
-from setudownloader.pipelines import SqlitePipeline
-from scrapy.http import Request
-from scrapy.http.request import NO_CALLBACK
-from scrapy.utils.log import failure_to_exc_info
+from setudownloader.define import NOTICE, GetLogFileName
+from setudownloader.pipelines import BaseFilesPipeline, ProgressBarsPipeline, SqlitePipeline
 from setudownloader.middlewares import BaseDownloaderMiddleware
 from scrapy.exceptions import DropItem
 from urllib.parse import urlencode, urlparse
-
-NOTICE = 35
-logging.addLevelName(NOTICE, "NOTICE")
 
 class TwitterItem(scrapy.Item):
     user_name = scrapy.Field() # 作者名
@@ -32,6 +27,7 @@ class TwitterItem(scrapy.Item):
     urls = scrapy.Field()  # 所有图片原始链接
 
     file_urls = scrapy.Field()  # 下载链接
+    media_type = scrapy.Field()
 
 
 class TwitterDownloadMiddleware(BaseDownloaderMiddleware):
@@ -45,8 +41,6 @@ class TwitterDownloadMiddleware(BaseDownloaderMiddleware):
             request.cookies = self.cookies
         request.headers['Referer'] = 'https://twitter.com/home'
     
-    def process_response(self, request, response, spider: scrapy.Spider):
-        return response
 
 class TwitterDBPipeline(SqlitePipeline):
     db_path = ".database/twitter.db"
@@ -63,6 +57,7 @@ class TwitterDBPipeline(SqlitePipeline):
                 id          INT NOT NULL,
                 screen_name TEXT NOT NULL,
                 name        TEXT NOT NULL,
+                queried     BOOLEAN DEFAULT FALSE,
                 PRIMARY KEY (id)
             );
 
@@ -89,6 +84,11 @@ class TwitterDBPipeline(SqlitePipeline):
             );
         """
         self.cursor.executescript(sql)
+        update_sql = ""
+        # update_sql = "ALTER TABLE user ADD COLUMN queried BOOLEAN DEFAULT FALSE;"
+        # 更新新字段时，可能会重新爬取大量元数据
+        if update_sql:
+            self.cursor.executescript(update_sql)
 
     def process_item(self, item, spider):
         data = {
@@ -116,29 +116,18 @@ class TwitterDBPipeline(SqlitePipeline):
                 "is_delete": False
             }
             self.insert("media", data)
-        spider.log(f'[{item["tweet_id"]}] database save', NOTICE)
+        spider.log(f'[{item["user_screen_name"]}] {item["user_name"]} [{item["tweet_id"]}] database save', NOTICE)
         return item
 
 
 
-class TwitterFilesPipeline(FilesPipeline):
-    EXPIRES = 365 * 100
-
-    def open_spider(self, spider):
-        super().open_spider(spider)
-        self.config = {}
-        config_path = spider.settings.get("CONFIG_PATH")
-        if os.path.exists(config_path):
-            with open(config_path, "r") as _f:
-                config = json.load(_f)
-            for _cf in config:
-                if _cf.get(spider.name):
-                    self.config[_cf.get(spider.name)] = _cf
-        spider.config = self.config
-
+class TwitterFilesPipeline(BaseFilesPipeline):
     def process_item(self, item, spider):
         # item预处理
-        item["file_urls"] = [f"{i}?name=orig" for i in item["urls"]]
+        if item["media_type"] == "photo":
+            item["file_urls"] = [f"{i}?name=orig" for i in item["urls"]]
+        else:
+            item["file_urls"] = item["urls"].copy()
         return super().process_item(item, spider)
 
     def file_path(self, request, response=None, info=None, *, item=None):
@@ -161,17 +150,15 @@ class TwitterFilesPipeline(FilesPipeline):
     
     def item_completed(self, results, item, info):
         # 下载完成后，验证下载成功
-        for ok, value in results:
-            if not ok:
-                info.spider.logger.error(
-                    "%(class)s found errors processing",
-                    {"class": self.__class__.__name__},
-                    exc_info=failure_to_exc_info(value),
-                    extra={"spider": info.spider},
-                )
-                raise DropItem("download fail")
-        info.spider.log(f'[{item["tweet_id"]}] download success', NOTICE)
+        super().item_completed(results, item, info)
+        info.spider.log(f'[{item["tweet_id"]}] download success', logging.INFO)
         return item
+
+
+class TwitterProgressBarsPipeline(ProgressBarsPip   eline):
+    def close_spider(self, spider):
+        if self.pbar.count >= self.pbar.total:
+            spider.update_user = True
 
 authorization = "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA"
 
@@ -192,40 +179,54 @@ class TwitterSpider(scrapy.Spider):
 
     # 自定义setting
     custom_settings = {
+        "STATS_CLASS": "setudownloader.spiders.twitter.TwitterStatsCollector",
         "ITEM_PIPELINES": {
             "setudownloader.spiders.twitter.TwitterFilesPipeline": 300,
             "setudownloader.spiders.twitter.TwitterDBPipeline": 400,
+            "setudownloader.spiders.twitter.TwitterProgressBarsPipeline": 999,
         },
         "DOWNLOADER_MIDDLEWARES": {
             "setudownloader.spiders.twitter.TwitterDownloadMiddleware": 543,
         },
         "LOG_LEVEL": "WARNING",
+        "LOG_FILE": GetLogFileName("twitter"),
+        "STD_COOKIES_FILE": "/root/picture/ssdownloader/setudownloader/cookies/twitter.com_cookies copy.txt",
     }
 
     def start_requests(self):
-        uname = "teranekos"
-        for uname in self.config:
+        self.total_count = 0
+        self.unames = unames = list(self.config)
+        if getattr(self, "sp_user", None):
+            self.unames = unames = [self.sp_user]
+        # self.unames = unames = ["daidai_kasame"]
+        for uname in unames:
             params = {'variables': userInfoApiPar.format(uname)}
-            yield scrapy.FormRequest(url=userInfoApi, formdata=params, callback=self.user_parse)
+            yield scrapy.FormRequest(url=userInfoApi, formdata=params, callback=self.user_parse, cb_kwargs={"user_screen_name":uname})
 
-    def user_parse(self, response):
+    def user_parse(self, response, **cb_kwargs):
         result = json.loads(response.text)
+        user_data = result["data"]["user"]
+        if "legacy" not in user_data:
+            self.log(f"[{cb_kwargs.get('user_screen_name')}] user error", logging.WARNING)
+            return
         cb = {
-            "user_id" : result["data"]["user"]["rest_id"],
-            "user_screen_name" : result["data"]["user"]["legacy"]["screen_name"],
-            "media_count" : result["data"]["user"]["legacy"]["media_count"],
-            "user_name" : result["data"]["user"]["legacy"]["name"],
+            "user_id" : user_data["rest_id"],
+            "user_screen_name" : user_data["legacy"]["screen_name"],
+            "media_count" : user_data["legacy"]["media_count"],
+            "user_name" : user_data["legacy"]["name"],
         }
-        self.log(f"{cb['user_screen_name']}")
-        self.log(f"作者<{cb['user_screen_name']}>作品数量为：{cb['media_count']}", NOTICE)
+        self.log(f"[{cb['user_screen_name']}] {cb['user_name']} 作品数量为：{cb['media_count']}", NOTICE)
         self.skipCount = {}
         return self.parse(**cb)
-
 
     def parse(self, response = None, **kwargs):
         if response:
             result = json.loads(response.text)
-            instructions = result["data"]["user"]["result"]["timeline_v2"]["timeline"]["instructions"]
+            try:
+                instructions = result["data"]["user"]["result"]["timeline_v2"]["timeline"]["instructions"]
+            except:
+                self.log(f"result error, {kwargs}", logging.WARNING)
+                return
             cursorValue = None
             itemArray = []
             for instruction in instructions:
@@ -236,10 +237,15 @@ class TwitterSpider(scrapy.Spider):
                         itemData = item["item"]["itemContent"]["tweet_results"]["result"]
                         itemArray.append(itemData)
                 for item in instruction.get("moduleItems", []):
-                    itemData = item["item"]["itemContent"]["tweet_results"]["result"]
+                    tweet_results = item["item"]["itemContent"]["tweet_results"]
+                    itemData = tweet_results["result"] if tweet_results else None
                     itemArray.append(itemData)
 
+            self.total_count += len(itemArray)
             for itemData in itemArray:
+                if itemData is None:
+                    self.total_count -= 1
+                    continue
                 tweetItem = TwitterItem()
                 if "tweet" in itemData:
                     itemData = itemData["tweet"]
@@ -254,7 +260,7 @@ class TwitterSpider(scrapy.Spider):
                 tweetItem["upload_date"] = datetime.strptime(upload_date, "%a %b %d %H:%M:%S %z %Y")
                 tweetItem["urls"] = urls = []
                 for media in itemData["legacy"]["extended_entities"]["media"]:
-                    media_type = media["type"]
+                    tweetItem["media_type"] = media_type = media["type"]
                     if media_type == "photo":
                         urls.append(media["media_url_https"])
                     elif media_type == "animated_gif":
@@ -265,15 +271,21 @@ class TwitterSpider(scrapy.Spider):
                                           key=lambda s: s['bitrate'] if 'bitrate' in s else 0, reverse=True)[0]
                         url = variants['url']
                         urls.append(url)
+                    else:
+                        self.log(f"未知媒体类型: {media_type}\nitem: {tweetItem}", logging.WARNING)
+                        continue
 
                 if str(user_screen_name) != kwargs["user_screen_name"] or str(user_id) != kwargs["user_id"]:
                     self.log(f"数据有误： {tweetItem}", logging.ERROR)
                     continue
                 
                 if self._check_pid_download(tweet_id):
+                    self.total_count -= 1
                     self.log(f"跳过tid: {tweet_id}", logging.DEBUG)
-                    # self.skipCount[kwargs["user_id"]] = self.skipCount.get(kwargs["user_id"], 0) + 1
+                    if self._check_user_queried(user_id):
+                        self.skipCount[kwargs["user_id"]] = self.skipCount.get(kwargs["user_id"], 0) + 1
                     continue
+
                 yield tweetItem
 
             if cursorValue and itemArray and self.skipCount.get(kwargs["user_id"], 0) < 10:
@@ -283,7 +295,6 @@ class TwitterSpider(scrapy.Spider):
                     'features': userMediaApiParCommon
                 }
                 url = userMediaApi + "?" + urlencode(params)
-                # self.stop = True
                 yield scrapy.Request(url=url, callback=self.parse, dont_filter=True, cb_kwargs=kwargs)
         else:
             params = {
@@ -291,7 +302,7 @@ class TwitterSpider(scrapy.Spider):
                 'features': userMediaApiParCommon
             }
             url = userMediaApi + "?" + urlencode(params)
-            yield scrapy.Request(url=url, callback=self.parse, dont_filter=True, cb_kwargs=kwargs)
+            yield scrapy.Request(url=url, callback=self.parse, dont_filter=True, priority=1, cb_kwargs=kwargs)
 
     def _check_pid_download(self, pid):
         sql = f"SELECT * FROM tweet WHERE id = {pid}"
@@ -301,4 +312,35 @@ class TwitterSpider(scrapy.Spider):
                 return False
         return bool(result)
 
+    def _check_user_queried(self, uid):
+        sql = f"SELECT queried FROM user WHERE id = {uid}"
+        result = self.cursor.execute(sql).fetchall()
+        if result:
+            return bool(result[0][0])
+        return False
+
+    def update_user_queried(self):
+        connect = sqlite3.connect(self.db_path)
+        cursor = connect.cursor()
+        for uname in self.unames:
+            sql = f"UPDATE user SET queried = TRUE WHERE screen_name = ?;"
+            cursor.execute(sql, (uname,))
+            connect.commit()
+            self.log(f"{uname} queried=true", NOTICE)
+        cursor.close()
+        connect.close()
+
+
+from scrapy.statscollectors import MemoryStatsCollector
+
+class TwitterStatsCollector(MemoryStatsCollector):
     
+    def close_spider(self, spider, reason: str) -> None:
+        super().close_spider(spider, reason)
+        for k, v in self.get_stats().items():
+            for l in ["WARNING", "ERROR", "CRITICAL"]:
+                if l in k:
+                    print(k, v)
+                    return
+        if getattr(spider, "update_user", False):
+            spider.update_user_queried()         

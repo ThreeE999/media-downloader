@@ -1,4 +1,3 @@
-import hashlib
 import json
 import mimetypes
 import os
@@ -6,19 +5,12 @@ from pathlib import Path
 from urllib.parse import urlparse
 import scrapy
 import logging
-from datetime import date, datetime
-from scrapy.utils.python import to_bytes
-from itemadapter import ItemAdapter
-from scrapy.pipelines.files import FilesPipeline
-from setudownloader.pipelines import SqlitePipeline
-from scrapy.http import Request
-from scrapy.http.request import NO_CALLBACK
-from scrapy.utils.log import failure_to_exc_info
+from datetime import datetime
+from setudownloader.pipelines import BaseFilesPipeline, ProgressBarsPipeline, SqlitePipeline
 from setudownloader.middlewares import BaseDownloaderMiddleware
 from scrapy.exceptions import DropItem
-
-NOTICE = 35
-logging.addLevelName(NOTICE, "NOTICE")
+from setudownloader.define import NOTICE, GetLogFileName
+from scrapy.exceptions import IgnoreRequest
 
 class PixivItem(scrapy.Item):
     user_name = scrapy.Field() # 作者名
@@ -41,13 +33,14 @@ class PixivDownloadMiddleware(BaseDownloaderMiddleware):
             request.meta["proxy"] = self.proxy
         if self.cookies:
             request.cookies = self.cookies
-        if 'pixiv.net' in request.url:
-            request.headers['Referer'] = 'https://www.pixiv.net/discovery'
+        request.headers['Referer'] = 'https://www.pixiv.net/discovery'
     
     def process_response(self, request, response, spider: scrapy.Spider):
         if response.status in [429, 403]:
             spider.log(f"response.status = {response.status}", NOTICE)
             spider.crawler.engine.close_spider(spider, reason="request fail")
+        elif response.status in [404]:
+            spider.log(f"404Error request user: {request.cb_kwargs.get("user_id")}, url: <{request.url}>", logging.WARNING)
         return response
     
 class PixivDBPipeline(SqlitePipeline):
@@ -131,25 +124,12 @@ class PixivDBPipeline(SqlitePipeline):
                 "is_delete": False
             }
             self.insert("media", data)
-        spider.log(f'[{item["illust_id"]}] database save', NOTICE)
+        spider.log(f'[{item["user_id"]}] {item["user_name"]} [{item["illust_id"]}] database save', NOTICE)
         return item
 
 
 
-class PixivFilesPipeline(FilesPipeline):
-    EXPIRES = 365 * 100
-
-    def open_spider(self, spider):
-        super().open_spider(spider)
-        self.config = {}
-        config_path = spider.settings.get("CONFIG_PATH")
-        if os.path.exists(config_path):
-            with open(config_path, "r") as _f:
-                config = json.load(_f)
-            for _cf in config:
-                if _cf.get(spider.name):
-                    self.config[_cf.get(spider.name)] = _cf
-        spider.config = self.config
+class PixivFilesPipeline(BaseFilesPipeline):
 
     def process_item(self, item, spider):
         # item预处理
@@ -176,18 +156,15 @@ class PixivFilesPipeline(FilesPipeline):
     
     def item_completed(self, results, item, info):
         # 下载完成后，验证下载成功
-        for ok, value in results:
-            if not ok:
-                info.spider.logger.error(
-                    "%(class)s found errors processing",
-                    {"class": self.__class__.__name__},
-                    exc_info=failure_to_exc_info(value),
-                    extra={"spider": info.spider},
-                )
-                raise DropItem("download fail")
+        super().item_completed(results, item, info)
         if results:
-            info.spider.log(f'[{item["illust_id"]}] download success', NOTICE)
+            info.spider.log(f'[{item["illust_id"]}] download success', logging.INFO)
         return item
+
+
+
+class PixivProgressBarsPipeline(ProgressBarsPipeline):
+    pass
 
 
 class PixivSpider(scrapy.Spider):
@@ -200,21 +177,25 @@ class PixivSpider(scrapy.Spider):
         "ITEM_PIPELINES": {
             "setudownloader.spiders.pixiv.PixivFilesPipeline": 300,
             "setudownloader.spiders.pixiv.PixivDBPipeline": 400,
+            "setudownloader.spiders.pixiv.PixivProgressBarsPipeline": 999,
         },
         "DOWNLOADER_MIDDLEWARES": {
             "setudownloader.spiders.pixiv.PixivDownloadMiddleware": 543,
-        }
+        },
+        "LOG_FILE": GetLogFileName(Path(__file__).stem),
+        # "LOG_LEVEL": "DEBUG",
     }
 
     def start_requests(self):
         # https://www.pixiv.net/ajax/user/41989573/profile/all
-        uids = [41989573]        # 用户ID
-        uids = self.config
+        uids = list(self.config.keys())
+        # uids = [594055]        # 用户ID
+        self.total_count = 0
         for uid in uids:
             url = f"https://www.pixiv.net/ajax/user/{uid}/profile/all"
-            yield scrapy.Request(url=url, callback=self.profile_parse, dont_filter=True, cb_kwargs={"user_id": uid})
+            yield scrapy.Request(url=url, callback=self.profile_parse, dont_filter=True, cb_kwargs={"user_id": str(uid)})
 
-    def profile_parse(self, response, user_id):
+    def profile_parse(self, response, **cb_kwargs):
         result = json.loads(response.text)
         if result["error"]:
             raise "author_parse请求失败 data:{result}"
@@ -225,16 +206,18 @@ class PixivSpider(scrapy.Spider):
         
         artworks.extend(illusts)
         artworks.extend(manga)
-
+        user_id = cb_kwargs.get("user_id")
         user_name = self.config.get(user_id, {}).get("name", "no name")
-        self.log(f"作者<[{user_id}]{user_name}>作品数量为：{len(artworks)}", NOTICE)
+        self.log(f"[{user_id}] {user_name} 作品数量为：{len(artworks)}", NOTICE)
+        self.total_count += len(artworks)
 
         for pid in artworks:
             if self._check_pid_download(pid):
                 self.log(f"跳过pid: {pid}", logging.DEBUG)
+                self.total_count -= 1
             else:
                 url = f"https://www.pixiv.net/ajax/illust/{pid}"
-                yield scrapy.Request(url=url, callback=self.illust_parse, dont_filter=True)
+                yield scrapy.Request(url=url, callback=self.illust_parse, dont_filter=True, cb_kwargs=cb_kwargs)
     
     def _check_pid_download(self, pid):
         sql = f"SELECT * FROM illust WHERE id = {pid}"
@@ -250,10 +233,11 @@ class PixivSpider(scrapy.Spider):
         for page, url in enumerate(item["urls"]):
             sql = f"SELECT illust_id, page FROM media WHERE illust_id = {pid} and page = {page} and (is_delete = False OR is_download = True)"
             if not bool(self.cursor.execute(sql).fetchall()):
-                urls.append(url.replace("pximg.net", "pixiv.re"))
+                # url = url.replace("pximg.net", "pixiv.re")        # 代理下载
+                urls.append(url)
         return urls
 
-    def illust_parse(self, response):
+    def illust_parse(self, response, **cb_kwargs):
         # ex: https://www.pixiv.net/ajax/illust/82775556
         result = json.loads(response.text)
         if result["error"]:
