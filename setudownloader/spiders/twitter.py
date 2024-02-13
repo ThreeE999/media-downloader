@@ -155,7 +155,7 @@ class TwitterFilesPipeline(BaseFilesPipeline):
         return item
 
 
-class TwitterProgressBarsPipeline(ProgressBarsPip   eline):
+class TwitterProgressBarsPipeline(ProgressBarsPipeline):
     def close_spider(self, spider):
         if self.pbar.count >= self.pbar.total:
             spider.update_user = True
