@@ -4,7 +4,7 @@ SPIDER_MODULES = ["setudownloader.spiders"]
 NEWSPIDER_MODULE = "setudownloader.spiders"
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
-USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36'
+USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
 
 # Obey robots.txt rules 不建议遵守
 ROBOTSTXT_OBEY = False
@@ -77,6 +77,8 @@ AUTOTHROTTLE_MAX_DELAY = 20
 REQUEST_FINGERPRINTER_IMPLEMENTATION = "2.7"
 TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
 FEED_EXPORT_ENCODING = "utf-8"
+
+DOWNLOAD_WARN_SIZE = 1024 * 1024 * 100  # 设置为你期望的字节数大小，例如 50 MB
 
 # CRITICAL, ERROR, WARNING, INFO, DEBUG
 LOG_LEVEL = "WARNING"
