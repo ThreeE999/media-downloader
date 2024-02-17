@@ -159,7 +159,7 @@
         "path": "ばらむ",
         "name": "ばらむ",
         "pixiv": "217306",
-        "twitter": 0
+        "twitter": "xbaramx"
     },
     {
         "path": "Aiki", 
@@ -213,7 +213,7 @@
         "path": "月うさぎ",
         "name": "月うさぎ",
         "pixiv": "3440024",
-        "twitter": 0
+        "twitter": "tukiman02"
     },
     {
         "path": "babu",
@@ -561,7 +561,10 @@
         "path": "ChinTora0201",
         "name": "ChinTora0201",
         "pixiv": "14496985",
-        "twitter": 0
+        "twitter": 0,
+        "kemono": [
+            ["fanbox", "14496985"]
+        ]
     },
     {
         "path": "ふぇんりる",
@@ -657,7 +660,7 @@
         "path": "理紅",
         "name": "理紅",
         "pixiv": "89056",
-        "twitter": 0
+        "twitter": "liku_0495"
     },
     {
         "path": "Kirari★",
@@ -717,7 +720,7 @@
         "path": "佐倉おりこ",
         "name": "佐倉おりこ",
         "pixiv": "1616936",
-        "twitter": 0
+        "twitter": "sakura_oriko"
     },
     {
         "path": "moyori",
@@ -789,7 +792,7 @@
         "path": "フルーツラビット",
         "name": "フルーツラビット",
         "pixiv": "14171585",
-        "twitter": 0
+        "twitter": "fruitsrabbit"
     },
     {
         "path": "槿 ムクゲ",
@@ -867,7 +870,7 @@
         "path": "やま参",
         "name": "やま参",
         "pixiv": "346855",
-        "twitter": 0
+        "twitter": "yamasaning"
     },
     {
         "path": "あづみ一樹",
@@ -1371,5 +1374,53 @@
         "path": "柊 水佳(suica)",
         "name": "柊 水佳(suica)",
         "twitter": "suika_hiragi"
+    },
+    {
+        "path": "SiyuMu",
+        "name": "SiyuMu",
+        "pixiv": ["23177299", "53812533"],
+        "twitter": "Spetermoon"
+    },
+    {
+        "path": "沢城あやほ",
+        "name": "沢城あやほ",
+        "pixiv": ["194668"],
+        "twitter": "ayaoshiro"
+    },
+    {
+        "path": "cotono",
+        "name": "cotono",
+        "pixiv": ["8035086"],
+        "twitter": "cotono_cot"
+    },
+    {
+        "path": "はづき蓮季",
+        "name": "はづき蓮季",
+        "pixiv": ["90315494"],
+        "twitter": "hasukimm"
+    },
+    {
+        "path": "紗倉みかん",
+        "name": "紗倉みかん",
+        "pixiv": 0,
+        "twitter": "chirizakura"
+    },
+    {
+        "path": "Mono",
+        "name": "Mono",
+        "pixiv": "10341295",
+        "twitter": "Mono_mon__"
+    },
+    {
+        "path": "皆村春樹",
+        "name": "皆村春樹",
+        "pixiv": "6098",
+        "twitter": "halllki"
+    },
+    {
+        "path": "子兎メル",
+        "name": "子兎メル",
+        "pixiv": "87551752",
+        "twitter": "meruhunlab3"
     }
 ]
