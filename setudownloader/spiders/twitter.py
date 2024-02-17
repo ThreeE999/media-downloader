@@ -1,19 +1,15 @@
-import hashlib
 import json
 import mimetypes
-import os
 from pathlib import Path
 import sqlite3
 import scrapy
 import logging
-from datetime import date, datetime
-from scrapy.utils.python import to_bytes
-from itemadapter import ItemAdapter
+from datetime import datetime
 from setudownloader.define import NOTICE, GetLogFileName
 from setudownloader.pipelines import BaseFilesPipeline, ProgressBarsPipeline, SqlitePipeline
 from setudownloader.middlewares import BaseDownloaderMiddleware
-from scrapy.exceptions import DropItem
 from urllib.parse import urlencode, urlparse
+from scrapy.statscollectors import MemoryStatsCollector
 
 class TwitterItem(scrapy.Item):
     user_name = scrapy.Field() # 作者名
@@ -190,7 +186,7 @@ class TwitterSpider(scrapy.Spider):
         },
         "LOG_LEVEL": "WARNING",
         "LOG_FILE": GetLogFileName("twitter"),
-        "STD_COOKIES_FILE": "/root/picture/ssdownloader/setudownloader/cookies/twitter.com_cookies copy.txt",
+        "STD_COOKIES_FILE": "/root/picture/ssdownloader/setudownloader/cookies/twitter.com_cookies.txt",
     }
 
     def start_requests(self):
@@ -291,14 +287,14 @@ class TwitterSpider(scrapy.Spider):
             if cursorValue and itemArray and self.skipCount.get(kwargs["user_id"], 0) < 10:
                 cursorPar = '"cursor":"{}",'.format(cursorValue)
                 params = {
-                    'variables': userMediaApiPar.format(kwargs["user_id"], 20, cursorPar),
+                    'variables': userMediaApiPar.format(kwargs["user_id"], 200, cursorPar),
                     'features': userMediaApiParCommon
                 }
                 url = userMediaApi + "?" + urlencode(params)
-                yield scrapy.Request(url=url, callback=self.parse, dont_filter=True, cb_kwargs=kwargs)
+                yield scrapy.Request(url=url, callback=self.parse, dont_filter=True, priority=2, cb_kwargs=kwargs)
         else:
             params = {
-                'variables': userMediaApiPar.format(kwargs["user_id"], 20, ""),
+                'variables': userMediaApiPar.format(kwargs["user_id"], 200, ""),
                 'features': userMediaApiParCommon
             }
             url = userMediaApi + "?" + urlencode(params)
@@ -331,7 +327,6 @@ class TwitterSpider(scrapy.Spider):
         connect.close()
 
 
-from scrapy.statscollectors import MemoryStatsCollector
 
 class TwitterStatsCollector(MemoryStatsCollector):
     
