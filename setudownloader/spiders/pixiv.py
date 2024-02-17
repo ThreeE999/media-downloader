@@ -189,6 +189,8 @@ class PixivSpider(scrapy.Spider):
     def start_requests(self):
         # https://www.pixiv.net/ajax/user/41989573/profile/all
         uids = list(self.config.keys())
+        if getattr(self, "sp_user", None):
+            uids = [self.sp_user]
         # uids = [594055]        # 用户ID
         self.total_count = 0
         for uid in uids:
