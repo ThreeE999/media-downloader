@@ -1,6 +1,4 @@
 import json
-import mimetypes
-import os
 from pathlib import Path
 from urllib.parse import urlparse
 import scrapy
@@ -8,9 +6,10 @@ import logging
 from datetime import datetime
 from setudownloader.pipelines import BaseFilesPipeline, ProgressBarsPipeline, SqlitePipeline
 from setudownloader.middlewares import BaseDownloaderMiddleware
-from scrapy.exceptions import DropItem
 from setudownloader.define import NOTICE, GetLogFileName
-from scrapy.exceptions import IgnoreRequest
+import scrapy.signals
+from scrapy.http.request import NO_CALLBACK
+from setudownloader.spiders import BaseSpider
 
 class PixivItem(scrapy.Item):
     user_name = scrapy.Field() # 作者名
@@ -24,7 +23,7 @@ class PixivItem(scrapy.Item):
 
     urls = scrapy.Field()  # 所有图片原始链接
 
-    file_urls = scrapy.Field()  # 下载链接
+    # file_urls = scrapy.Field()  # 下载链接
 
 
 class PixivDownloadMiddleware(BaseDownloaderMiddleware):
@@ -43,6 +42,7 @@ class PixivDownloadMiddleware(BaseDownloaderMiddleware):
             spider.log(f"404Error request user: {request.cb_kwargs.get("user_id")}, url: <{request.url}>", logging.WARNING)
         return response
     
+
 class PixivDBPipeline(SqlitePipeline):
     db_path = ".database/pixiv.db"
 
@@ -128,23 +128,18 @@ class PixivDBPipeline(SqlitePipeline):
         return item
 
 
-
 class PixivFilesPipeline(BaseFilesPipeline):
 
-    def process_item(self, item, spider):
-        # item预处理
-        item["file_urls"] = spider.get_need_download_urls(item)
-        return super().process_item(item, spider)
+    def get_media_requests(self, item, info):
+        return [scrapy.Request(u, callback=NO_CALLBACK, meta={"progress_bar_name":self.get_file_name(u)}) for u in item["urls"]]
+
+    def get_file_name(self, url):
+        _path = Path(urlparse(url).path)
+        return _path.name
 
     def file_path(self, request, response=None, info=None, *, item=None):
         # 文件名处理
         _path = Path(urlparse(request.url).path)
-        media_ext = _path.suffix
-        if media_ext not in mimetypes.types_map:
-            media_ext = ""
-            media_type = mimetypes.guess_type(request.url)[0]
-            if media_type:
-                media_ext = mimetypes.guess_extension(media_type)
         user_id = item['user_id']
         if int(user_id) in self.config:
             media_path = f"{self.config[int(user_id)]['path']}/pixiv/{user_id}/{_path.name}"
@@ -164,10 +159,11 @@ class PixivFilesPipeline(BaseFilesPipeline):
 
 
 class PixivProgressBarsPipeline(ProgressBarsPipeline):
-    pass
+    REQUEST_BAR_DEFAULT = False
 
 
-class PixivSpider(scrapy.Spider):
+
+class PixivSpider(BaseSpider):
     name = "pixiv"
     allowed_domains = ["pixiv.net"]
     start_urls = ["https://pixiv.net"]
@@ -177,7 +173,7 @@ class PixivSpider(scrapy.Spider):
         "ITEM_PIPELINES": {
             "setudownloader.spiders.pixiv.PixivFilesPipeline": 300,
             "setudownloader.spiders.pixiv.PixivDBPipeline": 400,
-            "setudownloader.spiders.pixiv.PixivProgressBarsPipeline": 999,
+            "setudownloader.spiders.pixiv.PixivProgressBarsPipeline": 901,
         },
         "DOWNLOADER_MIDDLEWARES": {
             "setudownloader.spiders.pixiv.PixivDownloadMiddleware": 543,
@@ -189,7 +185,7 @@ class PixivSpider(scrapy.Spider):
     def start_requests(self):
         # https://www.pixiv.net/ajax/user/41989573/profile/all
         uids = list(self.config.keys())
-        if getattr(self, "sp_user", None):
+        if self.sp_user:
             uids = [self.sp_user]
         # uids = [594055]        # 用户ID
         self.total_count = 0
@@ -217,6 +213,7 @@ class PixivSpider(scrapy.Spider):
             if self._check_pid_download(pid):
                 self.log(f"跳过pid: {pid}", logging.DEBUG)
                 self.total_count -= 1
+                continue
             else:
                 url = f"https://www.pixiv.net/ajax/illust/{pid}"
                 yield scrapy.Request(url=url, callback=self.illust_parse, dont_filter=True, cb_kwargs=cb_kwargs)
@@ -229,15 +226,6 @@ class PixivSpider(scrapy.Spider):
                 return False
         return bool(result)
     
-    def get_need_download_urls(self, item):
-        urls = []
-        pid = item["illust_id"]
-        for page, url in enumerate(item["urls"]):
-            sql = f"SELECT illust_id, page FROM media WHERE illust_id = {pid} and page = {page} and (is_delete = False OR is_download = True)"
-            if not bool(self.cursor.execute(sql).fetchall()):
-                # url = url.replace("pximg.net", "pixiv.re")        # 代理下载
-                urls.append(url)
-        return urls
 
     def illust_parse(self, response, **cb_kwargs):
         # ex: https://www.pixiv.net/ajax/illust/82775556

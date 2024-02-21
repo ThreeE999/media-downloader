@@ -67,29 +67,7 @@ class BaseFilesPipeline(FilesPipeline):
 
     def open_spider(self, spider):
         super().open_spider(spider)
-        self.config = {}
-        config_path = spider.settings.get("CONFIG_PATH")
-        if os.path.exists(config_path):
-            with open(config_path, "r") as _f:
-                config = json.load(_f)
-            for _cf in config:
-                spname = spider.name
-                if _cf.get(spname) and _cf.get(spname) != "0":
-                    if isinstance(_cf[spname], (list, tuple)):
-                        for post in _cf[spname]:
-                            if isinstance(post, list):
-                                post = tuple(list(map(str, post)))
-                            if post in self.config:
-                                raise KeyError(post)
-                            self.config[post] = _cf
-                    elif isinstance(_cf[spname], (str, int)):
-                        post = str(_cf[spname])
-                        if post in self.config:
-                            raise KeyError(post)
-                        self.config[post] = _cf
-                    else:
-                        logger.warning(f"load config err: {_cf}")
-        spider.config = self.config
+        self.config = spider.config
     
     def item_completed(self, results, item, info):
         # 下载完成后，验证下载成功
