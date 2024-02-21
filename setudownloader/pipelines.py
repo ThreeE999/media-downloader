@@ -11,11 +11,13 @@ import os
 import sqlite3
 import enlighten
 from itemadapter import ItemAdapter
+import scrapy
 from scrapy.pipelines.files import FilesPipeline, FileException
 from scrapy.exceptions import DropItem
 from scrapy.utils.log import failure_to_exc_info
 from scrapy.utils.request import referer_str
 from scrapy.settings import Settings
+import scrapy.signals
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +77,8 @@ class BaseFilesPipeline(FilesPipeline):
                 if _cf.get(spname) and _cf.get(spname) != "0":
                     if isinstance(_cf[spname], (list, tuple)):
                         for post in _cf[spname]:
+                            if isinstance(post, list):
+                                post = tuple(list(map(str, post)))
                             if post in self.config:
                                 raise KeyError(post)
                             self.config[post] = _cf
@@ -142,9 +146,12 @@ class BaseFilesPipeline(FilesPipeline):
 
 
 class ProgressBarsPipeline:
+    REQUEST_BAR_DEFAULT = "R"
+    
     def __init__(self):
-        manager = enlighten.get_manager()
-        self.pbar = manager.counter(total=0, desc='Basic', unit='ticks')
+        self.manager = enlighten.get_manager()
+        self.pbar = self.manager.counter(total=0, desc='D', unit='p')
+        self.request_bar = {}
 
     def open_spider(self, spider):
         spider.total_count = 0
@@ -153,6 +160,35 @@ class ProgressBarsPipeline:
         self.pbar.total = spider.total_count
         self.pbar.update()
         return item
+    
+    @classmethod
+    def from_crawler(cls, crawler):
+        pipe = cls()
+        crawler.signals.connect(pipe.on_headers_received, signal=scrapy.signals.headers_received)
+        crawler.signals.connect(pipe.on_bytes_received, signal=scrapy.signals.bytes_received)
+        crawler.signals.connect(pipe.on_response_downloaded, signal=scrapy.signals.response_downloaded)
+        return pipe
+
+    def on_headers_received(self, headers, body_length, request, spider):
+        bar_name = request.meta.get("progress_bar_name") or self.REQUEST_BAR_DEFAULT
+        if bar_name:
+            request_id = id(request)
+            BAR_FORMAT = '{desc}{desc_pad}{percentage:3.0f}%|{bar}| {count:!.2j}{unit} / {total:!.2j}{unit} ' \
+                        '[{elapsed}<{eta}, {rate:!.2j}{unit}/s]'
+            self.request_bar[request_id] = self.manager.counter(total=body_length*1.0, desc=f' {bar_name}', unit='B', bar_format=BAR_FORMAT, leave=True)
+    
+    def on_bytes_received(self, data, request, spider):
+        request_id = id(request)
+        if request_id in self.request_bar:
+            self.request_bar[request_id].update(len(data))
+    
+    def on_response_downloaded(self, response, request, spider):
+        request_id = id(request)
+        if request_id in self.request_bar:
+            self.request_bar[request_id].close()
+            del self.request_bar[request_id]
 
     def close_spider(self, spider):
-        pass
+        for request_id in self.request_bar:
+            self.request_bar[request_id].close()
+        self.request_bar.clear()
