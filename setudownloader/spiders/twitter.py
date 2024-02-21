@@ -11,6 +11,8 @@ from setudownloader.middlewares import BaseDownloaderMiddleware
 from urllib.parse import urlencode, urlparse
 from scrapy.statscollectors import MemoryStatsCollector
 
+from setudownloader.spiders import BaseSpider
+
 class TwitterItem(scrapy.Item):
     user_name = scrapy.Field() # 作者名
     user_screen_name = scrapy.Field()  # 作者 UID
@@ -168,7 +170,7 @@ userInfoApiPar = '{{"screen_name":"{}","withHighlightedLabel":false}}'
 hostUrl = 'https://api.twitter.com/1.1/guest/activate.json'
 
 
-class TwitterSpider(scrapy.Spider):
+class TwitterSpider(BaseSpider):
     name = Path(__file__).stem
     allowed_domains = ["twitter.com"]
     start_urls = ["https://twitter.com"]

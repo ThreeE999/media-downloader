@@ -13,6 +13,7 @@ from scrapy.utils.log import failure_to_exc_info
 from setudownloader.middlewares import BaseDownloaderMiddleware
 from scrapy.exceptions import DropItem
 from setudownloader.define import NOTICE, GetLogFileName
+from setudownloader.spiders import BaseSpider
 
 class KemonoItem(scrapy.Item):
     user_id = scrapy.Field()
@@ -148,7 +149,7 @@ class KemonoProgressBarsPipeline(ProgressBarsPipeline):
     pass
 
 
-class KemonoSpider(scrapy.Spider):
+class KemonoSpider(BaseSpider):
     name = "kemono"
     allowed_domains = ["kemono.su"]
     start_urls = ["https://kemono.su"]
@@ -195,10 +196,16 @@ class KemonoSpider(scrapy.Spider):
             kitem["user_id"] = data["user"]    # 作者ID
             kitem["title"] = data["title"]  # 标题
             kitem["service"] = service = data["service"]          # 服务
-            kitem["upload_date"] = datetime.strptime(data["published"], "%Y-%m-%dT%H:%M:%S")    # 上传日期
+            kitem["upload_date"] = datetime.fromisoformat(data["published"])    # 上传日期
             kitem["id"] = pid = data["id"]                # 作品ID
             kitem["file"] = data["attachments"]         # 附件
             kitem["content"] = data["content"]          # 元内容
+            try:
+                int(kitem["id"])
+            except:
+                self.log(f"错误数据跳过 {kitem}", logging.INFO)
+                self.total_count -= 1
+                continue
             if self._check_download(kitem["service"], kitem["id"]):
                 self.log(f"跳过 {service}-{pid}", logging.INFO)
                 self.total_count -= 1
