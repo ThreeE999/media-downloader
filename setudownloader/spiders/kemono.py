@@ -1,15 +1,12 @@
 from io import BytesIO
 import json
-import mimetypes
-import os
 from pathlib import Path
+import time
 from urllib.parse import urlparse
 import scrapy
 import logging
 from datetime import datetime
-from scrapy.pipelines.files import FilesPipeline
 from setudownloader.pipelines import ProgressBarsPipeline, SqlitePipeline, BaseFilesPipeline
-from scrapy.utils.log import failure_to_exc_info
 from setudownloader.middlewares import BaseDownloaderMiddleware
 from scrapy.exceptions import DropItem
 from setudownloader.define import NOTICE, GetLogFileName
@@ -161,7 +158,7 @@ class KemonoSpider(BaseSpider):
         "ITEM_PIPELINES": {
             "setudownloader.spiders.kemono.KemonoFilesPipeline": 300,
             "setudownloader.spiders.kemono.KemonoDBPipeline": 400,
-            "setudownloader.spiders.kemono.KemonoProgressBarsPipeline": 999,
+            "setudownloader.spiders.kemono.KemonoProgressBarsPipeline": 901,
         },
         "DOWNLOADER_MIDDLEWARES": {
             "setudownloader.spiders.kemono.KemonoDownloadMiddleware": 543,
@@ -169,11 +166,11 @@ class KemonoSpider(BaseSpider):
         "LOG_LEVEL": "NOTICE",
         "LOG_FILE": GetLogFileName("kemono"),
         "DOWNLOAD_WARN_SIZE": 1024 * 1024 * 1024 * 1,
+        "CONCURRENT_ITEMS": 3,  # 限制处理中的item数量
     }
 
     def start_requests(self):
         # https://kemono.su/api/v1/fanbox/user/14496985
-        self.total_count = 0
         if getattr(self, "sp_user", None):
             ulst = [self.sp_user.split(",")]
         else:
@@ -188,7 +185,7 @@ class KemonoSpider(BaseSpider):
 
     def parse(self, response, **cb_kwargs):
         result = json.loads(response.text)
-        self.total_count += len(result)
+        self.add_total(len(result))
         for data in result:
             if data["file"] and data["file"] not in data["attachments"]:
                 data["attachments"].insert(0, data["file"])
@@ -204,13 +201,14 @@ class KemonoSpider(BaseSpider):
                 int(kitem["id"])
             except:
                 self.log(f"错误数据跳过 {kitem}", logging.INFO)
-                self.total_count -= 1
+                self.add_total(-1)
                 continue
             if self._check_download(kitem["service"], kitem["id"]):
                 self.log(f"跳过 {service}-{pid}", logging.INFO)
-                self.total_count -= 1
+                self.add_skip()
                 continue
             yield kitem
+             
         if len(result) == 50:
             cb_kwargs["page"] = cb_kwargs.get("page", 0) + 50
             url = f"https://kemono.su/api/v1/{cb_kwargs['service']}/user/{cb_kwargs['user']}?o={cb_kwargs['page']}"
