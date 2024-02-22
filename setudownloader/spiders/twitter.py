@@ -155,7 +155,7 @@ class TwitterFilesPipeline(BaseFilesPipeline):
 
 class TwitterProgressBarsPipeline(ProgressBarsPipeline):
     def close_spider(self, spider):
-        if self.pbar.count >= self.pbar.total:
+        if self.success.count >= self.success.total:
             spider.update_user = True
 
 authorization = "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA"
@@ -192,14 +192,13 @@ class TwitterSpider(BaseSpider):
     }
 
     def start_requests(self):
-        self.total_count = 0
         self.unames = unames = list(self.config)
         if getattr(self, "sp_user", None):
             self.unames = unames = [self.sp_user]
         # self.unames = unames = ["daidai_kasame"]
         for uname in unames:
             params = {'variables': userInfoApiPar.format(uname)}
-            yield scrapy.FormRequest(url=userInfoApi, formdata=params, callback=self.user_parse, cb_kwargs={"user_screen_name":uname})
+            yield scrapy.FormRequest(url=userInfoApi, formdata=params, callback=self.user_parse, cb_kwargs={"user_screen_name":uname}, priority=4)
 
     def user_parse(self, response, **cb_kwargs):
         result = json.loads(response.text)
@@ -239,10 +238,10 @@ class TwitterSpider(BaseSpider):
                     itemData = tweet_results["result"] if tweet_results else None
                     itemArray.append(itemData)
 
-            self.total_count += len(itemArray)
+            self.add_total(len(itemArray))
             for itemData in itemArray:
                 if itemData is None:
-                    self.total_count -= 1
+                    self.add_total(-1)
                     continue
                 tweetItem = TwitterItem()
                 if "tweet" in itemData:
@@ -278,7 +277,7 @@ class TwitterSpider(BaseSpider):
                     continue
                 
                 if self._check_pid_download(tweet_id):
-                    self.total_count -= 1
+                    self.add_skip()
                     self.log(f"跳过tid: {tweet_id}", logging.DEBUG)
                     if self._check_user_queried(user_id):
                         self.skipCount[kwargs["user_id"]] = self.skipCount.get(kwargs["user_id"], 0) + 1
@@ -300,7 +299,7 @@ class TwitterSpider(BaseSpider):
                 'features': userMediaApiParCommon
             }
             url = userMediaApi + "?" + urlencode(params)
-            yield scrapy.Request(url=url, callback=self.parse, dont_filter=True, priority=1, cb_kwargs=kwargs)
+            yield scrapy.Request(url=url, callback=self.parse, dont_filter=True, priority=3, cb_kwargs=kwargs)
 
     def _check_pid_download(self, pid):
         sql = f"SELECT * FROM tweet WHERE id = {pid}"

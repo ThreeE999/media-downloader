@@ -23,8 +23,6 @@ class PixivItem(scrapy.Item):
 
     urls = scrapy.Field()  # 所有图片原始链接
 
-    # file_urls = scrapy.Field()  # 下载链接
-
 
 class PixivDownloadMiddleware(BaseDownloaderMiddleware):
     def process_request(self, request, spider):
@@ -140,13 +138,11 @@ class PixivFilesPipeline(BaseFilesPipeline):
     def file_path(self, request, response=None, info=None, *, item=None):
         # 文件名处理
         _path = Path(urlparse(request.url).path)
-        user_id = item['user_id']
-        if int(user_id) in self.config:
-            media_path = f"{self.config[int(user_id)]['path']}/pixiv/{user_id}/{_path.name}"
-        elif str(user_id) in self.config:
-            media_path = f"{self.config[str(user_id)]['path']}/pixiv/{user_id}/{_path.name}"
-        else:
-            media_path = f"other/pixiv/{user_id}/{_path.name}"
+        user_id = str(item['user_id'])
+        user_path = "other"
+        if user_id in self.config:
+            user_path = self.config[user_id]['path']
+        media_path = f"{user_path}/pixiv/{user_id}/{_path.name}"
         return media_path
     
     def item_completed(self, results, item, info):
@@ -188,7 +184,6 @@ class PixivSpider(BaseSpider):
         if self.sp_user:
             uids = [self.sp_user]
         # uids = [594055]        # 用户ID
-        self.total_count = 0
         for uid in uids:
             url = f"https://www.pixiv.net/ajax/user/{uid}/profile/all"
             yield scrapy.Request(url=url, callback=self.profile_parse, dont_filter=True, cb_kwargs={"user_id": str(uid)})
@@ -207,12 +202,12 @@ class PixivSpider(BaseSpider):
         user_id = cb_kwargs.get("user_id")
         user_name = self.config.get(user_id, {}).get("name", "no name")
         self.log(f"[{user_id}] {user_name} 作品数量为：{len(artworks)}", NOTICE)
-        self.total_count += len(artworks)
+        self.add_total(len(artworks))
 
         for pid in artworks:
             if self._check_pid_download(pid):
                 self.log(f"跳过pid: {pid}", logging.DEBUG)
-                self.total_count -= 1
+                self.add_skip()
                 continue
             else:
                 url = f"https://www.pixiv.net/ajax/illust/{pid}"

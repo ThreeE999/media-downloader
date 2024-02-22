@@ -2,21 +2,43 @@ import json
 import logging
 import os
 import scrapy
+import setudownloader.signals
 from setudownloader.define import NOTICE
 
 logging.addLevelName(NOTICE, "NOTICE")
 
 class BaseSpider(scrapy.Spider):
     
-    def __init__(self, name: str | None = None, **kwargs: json.Any):
+    def __init__(self, name = None, **kwargs):
         self._set_command_line_arguments()
         super().__init__(name, **kwargs)
-        self._set_config()
+        self._total = 0
+        self._skip = 0
     
     def _set_command_line_arguments(self):
         # -a 命令行参数补充
         self.sp_user = None   # 只处理单个作者
+    
+    def add_total(self, add):   # 修改总数信号
+        self._total += add
+        self.crawler.signals.send_catch_log(
+            signal=setudownloader.signals.change_total_count,
+            count=self._total
+        )
+    
+    def add_skip(self, add=1):   # 修改信号
+        self._skip += add
+        self.crawler.signals.send_catch_log(
+            signal=setudownloader.signals.change_skip_count,
+            count=self._skip
+        )
 
+    @classmethod
+    def from_crawler(cls, crawler, *args, **kwargs):
+        spider = super().from_crawler(crawler, *args, **kwargs)
+        spider._set_config()
+        return spider
+    
     @property
     def config(self):
         return self._config

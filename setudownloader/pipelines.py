@@ -18,6 +18,7 @@ from scrapy.utils.log import failure_to_exc_info
 from scrapy.utils.request import referer_str
 from scrapy.settings import Settings
 import scrapy.signals
+import setudownloader.signals
 
 logger = logging.getLogger(__name__)
 
@@ -127,17 +128,33 @@ class ProgressBarsPipeline:
     REQUEST_BAR_DEFAULT = "R"
     
     def __init__(self):
-        self.manager = enlighten.get_manager()
-        self.pbar = self.manager.counter(total=0, desc='D', unit='p')
+        self.manager = manager = enlighten.get_manager()
+        # self.pbar = self.manager.counter(total=0, desc='D', unit='p')
         self.request_bar = {}
 
-    def open_spider(self, spider):
-        spider.total_count = 0
+        terminal = manager.term
+        bar_format = u'{desc}{desc_pad}{percentage:3.0f}%|{bar}| ' + \
+                u'U:' + terminal.green3(u'{count_0:{len_total}d}') + u' ' + \
+                u'E:' + terminal.red2(u'{count_2:{len_total}d}') + u' ' + \
+                u'S:' + terminal.yellow2(u'{count_1:{len_total}d}') + u' ' + \
+                u'{count}/{total} ' + \
+                u'[{elapsed}<{eta}, {rate:.2f}{unit_pad}{unit}/s]'
+
+        self.success = manager.counter(total=0, desc='D', unit='p', color='green3', bar_format=bar_format)
+        self.skip = self.success.add_subcounter('yellow2')
+        self.failures = self.success.add_subcounter('red2')
 
     def process_item(self, item, spider):
-        self.pbar.total = spider.total_count
-        self.pbar.update()
+        self.success.update()
+        # spider.crawler.signals.send_catch_log(
+        #     signal=setudownloader.signals.change_success_count,
+        # )
         return item
+
+    def close_spider(self, spider):
+        for request_id in self.request_bar:
+            self.request_bar[request_id].close()
+        self.request_bar.clear()
     
     @classmethod
     def from_crawler(cls, crawler):
@@ -145,15 +162,28 @@ class ProgressBarsPipeline:
         crawler.signals.connect(pipe.on_headers_received, signal=scrapy.signals.headers_received)
         crawler.signals.connect(pipe.on_bytes_received, signal=scrapy.signals.bytes_received)
         crawler.signals.connect(pipe.on_response_downloaded, signal=scrapy.signals.response_downloaded)
+        crawler.signals.connect(pipe.on_change_total_count, signal=setudownloader.signals.change_total_count)
+        crawler.signals.connect(pipe.on_change_skip_count, signal=setudownloader.signals.change_skip_count)
+        # crawler.signals.connect(pipe.on_change_success_count, signal=setudownloader.signals.change_success_count)
+        # crawler.signals.connect(pipe.on_change_fail_count, signal=setudownloader.signals.change_fail_count)
+
+        crawler.signals.connect(pipe.on_change_fail_count, signal=scrapy.signals.item_dropped)
+        crawler.signals.connect(pipe.on_change_fail_count, signal=scrapy.signals.item_error)
         return pipe
 
     def on_headers_received(self, headers, body_length, request, spider):
         bar_name = request.meta.get("progress_bar_name") or self.REQUEST_BAR_DEFAULT
         if bar_name:
             request_id = id(request)
+            try:
+                length = float(body_length)
+            except:
+                # 这里会有UNKNOWN_LENGTH的情况,直接不显示了
+                length = 1024*1024*1024
+                spider.log(f"body_length: {body_length}, url: {request.url}", logging.DEBUG)
             BAR_FORMAT = '{desc}{desc_pad}{percentage:3.0f}%|{bar}| {count:!.2j}{unit} / {total:!.2j}{unit} ' \
                         '[{elapsed}<{eta}, {rate:!.2j}{unit}/s]'
-            self.request_bar[request_id] = self.manager.counter(total=body_length*1.0, desc=f' {bar_name}', unit='B', bar_format=BAR_FORMAT, leave=True)
+            self.request_bar[request_id] = self.manager.counter(total=length, desc=f' {bar_name}', unit='B', bar_format=BAR_FORMAT, leave=False)
     
     def on_bytes_received(self, data, request, spider):
         request_id = id(request)
@@ -166,7 +196,14 @@ class ProgressBarsPipeline:
             self.request_bar[request_id].close()
             del self.request_bar[request_id]
 
-    def close_spider(self, spider):
-        for request_id in self.request_bar:
-            self.request_bar[request_id].close()
-        self.request_bar.clear()
+    def on_change_total_count(self, count):
+        self.success.total = count
+    
+    # def on_change_success_count(self, count):
+    #     self.success.update()
+    
+    def on_change_skip_count(self, *args, **kwargs):
+        self.skip.update()
+
+    def on_change_fail_count(self, *args, **kwargs):
+        self.failures.update()
