@@ -200,7 +200,7 @@ class PixivSpider(BaseSpider):
         artworks.extend(illusts)
         artworks.extend(manga)
         user_id = cb_kwargs.get("user_id")
-        user_name = self.config.get(user_id, {}).get("name", "no name")
+        user_name = self.config.get(user_id, {}).get("path", "no name")
         self.log(f"[{user_id}] {user_name} 作品数量为：{len(artworks)}", NOTICE)
         self.add_total(len(artworks))
 

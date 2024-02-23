@@ -5,7 +5,7 @@ import sqlite3
 import scrapy
 import logging
 from datetime import datetime
-from setudownloader.define import NOTICE, GetLogFileName
+from setudownloader.define import NOTICE, NOTICE_WARN, GetLogFileName
 from setudownloader.pipelines import BaseFilesPipeline, ProgressBarsPipeline, SqlitePipeline
 from setudownloader.middlewares import BaseDownloaderMiddleware
 from urllib.parse import urlencode, urlparse
@@ -30,13 +30,11 @@ class TwitterItem(scrapy.Item):
 
 class TwitterDownloadMiddleware(BaseDownloaderMiddleware):
     def process_request(self, request, spider):
+        super().process_request(request, spider)
         request.headers['authorization'] = authorization
         for ck in self.cookies:
             if ck.name == "ct0":
                 request.headers["x-csrf-token"] = ck.value
-        request.meta["proxy"] = self.proxy
-        if self.cookies:
-            request.cookies = self.cookies
         request.headers['Referer'] = 'https://twitter.com/home'
     
 
@@ -181,7 +179,7 @@ class TwitterSpider(BaseSpider):
         "ITEM_PIPELINES": {
             "setudownloader.spiders.twitter.TwitterFilesPipeline": 300,
             "setudownloader.spiders.twitter.TwitterDBPipeline": 400,
-            "setudownloader.spiders.twitter.TwitterProgressBarsPipeline": 999,
+            "setudownloader.spiders.twitter.TwitterProgressBarsPipeline": 901,
         },
         "DOWNLOADER_MIDDLEWARES": {
             "setudownloader.spiders.twitter.TwitterDownloadMiddleware": 543,
@@ -195,8 +193,7 @@ class TwitterSpider(BaseSpider):
         self.unames = unames = list(self.config)
         if getattr(self, "sp_user", None):
             self.unames = unames = [self.sp_user]
-        # self.unames = unames = ["daidai_kasame"]
-        for uname in unames:
+        for uname in self.unames:
             params = {'variables': userInfoApiPar.format(uname)}
             yield scrapy.FormRequest(url=userInfoApi, formdata=params, callback=self.user_parse, cb_kwargs={"user_screen_name":uname}, priority=4)
 
@@ -204,7 +201,8 @@ class TwitterSpider(BaseSpider):
         result = json.loads(response.text)
         user_data = result["data"]["user"]
         if "legacy" not in user_data:
-            self.log(f"[{cb_kwargs.get('user_screen_name')}] user error", logging.WARNING)
+            self.unames.remove(cb_kwargs.get('user_screen_name'))
+            self.log(f"[{cb_kwargs.get('user_screen_name')}] user error", NOTICE_WARN)
             return
         cb = {
             "user_id" : user_data["rest_id"],
