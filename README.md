@@ -50,7 +50,7 @@ pip install -r ./requirements.txt
 FILES_STORE = "downloads"
 # 代理
 STD_HTTPPROXY = "http://127.0.0.1:10809"
-# 指定 cookie 路径
+# 指定 cookie 路径, （没cookie可下载不了r18
 STD_COOKIES_DIR = "./setudownloader/cookies"
 # 下载配置文件
 CONFIG_PATH = "./setudownloader/config.json"
