@@ -1,8 +1,5 @@
 from io import BytesIO
 import json
-from pathlib import Path
-import time
-from urllib.parse import urlparse
 import scrapy
 import logging
 from datetime import datetime
@@ -11,6 +8,7 @@ from setudownloader.middlewares import BaseDownloaderMiddleware
 from scrapy.exceptions import DropItem
 from setudownloader.define import NOTICE, GetLogFileName
 from setudownloader.spiders import BaseSpider
+from scrapy.http.request import NO_CALLBACK
 
 class KemonoItem(scrapy.Item):
     user_id = scrapy.Field()
@@ -21,14 +19,10 @@ class KemonoItem(scrapy.Item):
     file = scrapy.Field()
     content = scrapy.Field()
 
-    file_urls = scrapy.Field()  # 下载链接
-
 
 class KemonoDownloadMiddleware(BaseDownloaderMiddleware):
     def process_request(self, request, spider):
-        request.meta["proxy"] = self.proxy
-        if self.cookies:
-            request.cookies = self.cookies
+        super().process_request(request, spider)
         request.headers['Referer'] = 'https://kemono.su'
     
     def process_response(self, request, response, spider: scrapy.Spider):
@@ -47,15 +41,6 @@ class KemonoDBPipeline(SqlitePipeline):
 
     def build(self):
         # 修改数据库，要同时修改建库语句
-        # sql = """
-        #     CREATE TABLE IF NOT EXISTS creator
-        #     (
-        #         id          INT NOT NULL ,
-        #         name        TEXT,
-        #         service     TEXT NOT NULL,
-        #         updated     DATETIME NOT NULL,
-        #         PRIMARY KEY (id, service),
-        #     );
         sql = """
             CREATE TABLE IF NOT EXISTS fanbox
             (
@@ -65,8 +50,6 @@ class KemonoDBPipeline(SqlitePipeline):
                 upload_date DATETIME NOT NULL,
                 PRIMARY KEY (id)
             );
-
-            
         """
         self.cursor.executescript(sql)
 
@@ -89,44 +72,41 @@ class KemonoDBPipeline(SqlitePipeline):
 
 class KemonoFilesPipeline(BaseFilesPipeline):
 
-    def process_item(self, item, spider):
-        # item预处理
-        item["file_urls"] = [f"https://kemono.su/data{i['path']}" for i in item["file"]]
-        return super().process_item(item, spider)
+    def get_media_requests(self, item, info):
+        return [
+            scrapy.Request(
+                f"https://kemono.su/data{u['path']}", 
+                callback=NO_CALLBACK, 
+                meta={"progress_bar_name": f"R{i+1}"}
+            ) for i, u in enumerate(item["file"])
+        ]
 
-    def file_path(self, request, response=None, info=None, *, item=None):
-        # 文件名处理
-
+    def _path_by_item(self, item, name):
         user_id = item['user_id']
         service = item["service"]
         date = item["upload_date"]
         id = item["id"]
         title = item["title"]
+        key = (service, str(user_id))
+        if key in self.config:
+            auther = self.config[key]["path"]
+        else:
+            auther = "other"
+        title = self.validate_and_normalize_filename(title)
+        media_path = f"{auther}/kemono/{service}/{user_id}/[{date.strftime("%Y%m%d")}] [{id}] {title}/{name}"
+        return media_path
+
+    def file_path(self, request, response=None, info=None, *, item=None):
+        # 文件名处理
         for idx, i in enumerate(item["file"]):
             if i["path"] in request.url:
                 name = i["name"]
                 break
-        key = (service, str(user_id))
-        if key in self.config:
-            auther = self.config[key]["path"]
-        else:
-            auther = "other"
-        media_path = f"{auther}/kemono/{service}/{user_id}/[{date.strftime("%Y%m%d")}] [{id}] {title}/{idx+1}_{name}"
-        return media_path
+        name = f'{idx+1}_{name}'
+        return self._path_by_item(item, name)
     
     def content_path(self, item):
-        user_id = item['user_id']
-        service = item["service"]
-        date = item["upload_date"]
-        id = item["id"]
-        title = item["title"]
-        key = (service, str(user_id))
-        if key in self.config:
-            auther = self.config[key]["path"]
-        else:
-            auther = "other"
-        media_path = f"{auther}/kemono/{service}/{user_id}/[{date.strftime("%Y%m%d")}] [{id}] {title}/content.html"
-        return media_path
+        return self._path_by_item(item, "content.txt")
 
     def item_completed(self, results, item, info):
         # 下载完成后，验证下载成功
@@ -143,7 +123,7 @@ class KemonoFilesPipeline(BaseFilesPipeline):
 
 
 class KemonoProgressBarsPipeline(ProgressBarsPipeline):
-    pass
+    REQUEST_BAR_DEFAULT = False
 
 
 class KemonoSpider(BaseSpider):
@@ -163,10 +143,10 @@ class KemonoSpider(BaseSpider):
         "DOWNLOADER_MIDDLEWARES": {
             "setudownloader.spiders.kemono.KemonoDownloadMiddleware": 543,
         },
-        "LOG_LEVEL": "NOTICE",
+        "LOG_LEVEL": "WARNING",
         "LOG_FILE": GetLogFileName("kemono"),
-        "DOWNLOAD_WARN_SIZE": 1024 * 1024 * 1024 * 1,
-        "CONCURRENT_ITEMS": 3,  # 限制处理中的item数量
+        "DOWNLOAD_WARNSIZE": 1024 * 1024 * 1024 * 1,
+        "CONCURRENT_ITEMS": 1,  # 限制处理中的item数量
     }
 
     def start_requests(self):
@@ -181,6 +161,7 @@ class KemonoSpider(BaseSpider):
                 "service": service,
             }
             url = f"https://kemono.su/api/v1/{service}/user/{user}"
+            self.log(f"[{user}] [{service}] scaner", NOTICE)
             yield scrapy.Request(url=url, callback=self.parse, dont_filter=True, cb_kwargs=cb_kwargs)
 
     def parse(self, response, **cb_kwargs):
