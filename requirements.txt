@@ -1,0 +1,2 @@
+enlighten
+Scrapy==2.11.0
