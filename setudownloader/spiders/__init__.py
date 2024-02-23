@@ -3,9 +3,10 @@ import logging
 import os
 import scrapy
 import setudownloader.signals
-from setudownloader.define import NOTICE
+from setudownloader.define import NOTICE, NOTICE_WARN
 
 logging.addLevelName(NOTICE, "NOTICE")
+logging.addLevelName(NOTICE_WARN, "NOTICE WARN")
 
 class BaseSpider(scrapy.Spider):
     
@@ -23,7 +24,7 @@ class BaseSpider(scrapy.Spider):
         self._total += add
         self.crawler.signals.send_catch_log(
             signal=setudownloader.signals.change_total_count,
-            count=self._total
+            count=add
         )
     
     def add_skip(self, add=1):   # 修改信号
