@@ -1143,7 +1143,10 @@
     {
         "path": "AkiFn",
         "pixiv": "3231927",
-        "twitter": 0
+        "twitter": 0,
+        "kemono": [
+            ["fanbox", "3231927"]
+        ]
     },
     {
         "path": "わたあめ",
@@ -1241,5 +1244,13 @@
         "path": "hirotaka",
         "pixiv": 0,
         "twitter": ["hirotakaR180125", "hirotaka0125"]
+    },
+    {
+        "path": "風和りん",
+        "pixiv": "1198521",
+        "twitter": "Rin__x",
+        "kemono": [
+            ["fanbox", "1198521"]
+        ]
     }
 ]
