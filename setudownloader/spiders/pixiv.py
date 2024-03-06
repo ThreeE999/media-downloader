@@ -139,9 +139,7 @@ class PixivFilesPipeline(BaseFilesPipeline):
         # 文件名处理
         _path = Path(urlparse(request.url).path)
         user_id = str(item['user_id'])
-        user_path = "other"
-        if user_id in self.config:
-            user_path = self.config[user_id]['path']
+        user_path = self.get_base_path(user_id)
         media_path = f"{user_path}/pixiv/{user_id}/{_path.name}"
         return media_path
     
@@ -180,13 +178,24 @@ class PixivSpider(BaseSpider):
 
     def start_requests(self):
         # https://www.pixiv.net/ajax/user/41989573/profile/all
-        uids = list(self.config.keys())
-        if self.sp_user:
-            uids = [self.sp_user]
-        # uids = [594055]        # 用户ID
-        for uid in uids:
-            url = f"https://www.pixiv.net/ajax/user/{uid}/profile/all"
-            yield scrapy.Request(url=url, callback=self.profile_parse, dont_filter=True, cb_kwargs={"user_id": str(uid)})
+        if self.sp_id:      # 按作品ID的模式
+            artworks = self.sp_id.split(",")
+            self.add_total(len(artworks))
+            for pid in artworks:
+                if self._check_pid_download(pid):
+                    self.log(f"跳过pid: {pid}", logging.DEBUG)
+                    self.add_skip()
+                    continue
+                else:
+                    url = f"https://www.pixiv.net/ajax/illust/{pid}"
+                    yield scrapy.Request(url=url, callback=self.illust_parse, dont_filter=True)
+        else:           # 按作者ID的模式
+            uids = list(self.config.keys())
+            if self.sp_user:
+                uids = [self.sp_user]
+            for uid in uids:
+                url = f"https://www.pixiv.net/ajax/user/{uid}/profile/all"
+                yield scrapy.Request(url=url, callback=self.profile_parse, dont_filter=True, cb_kwargs={"user_id": str(uid)})
 
     def profile_parse(self, response, **cb_kwargs):
         result = json.loads(response.text)
@@ -211,9 +220,11 @@ class PixivSpider(BaseSpider):
                 continue
             else:
                 url = f"https://www.pixiv.net/ajax/illust/{pid}"
-                yield scrapy.Request(url=url, callback=self.illust_parse, dont_filter=True, cb_kwargs=cb_kwargs)
+                yield scrapy.Request(url=url, callback=self.illust_parse, dont_filter=True)
     
     def _check_pid_download(self, pid):
+        if self.force:
+            return False
         sql = f"SELECT * FROM illust WHERE id = {pid}"
         result = self.cursor.execute(sql).fetchall()
         if result:
@@ -222,7 +233,7 @@ class PixivSpider(BaseSpider):
         return bool(result)
     
 
-    def illust_parse(self, response, **cb_kwargs):
+    def illust_parse(self, response):
         # ex: https://www.pixiv.net/ajax/illust/82775556
         result = json.loads(response.text)
         if result["error"]:

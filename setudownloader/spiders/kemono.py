@@ -88,10 +88,7 @@ class KemonoFilesPipeline(BaseFilesPipeline):
         id = item["id"]
         title = item["title"]
         key = (service, str(user_id))
-        if key in self.config:
-            auther = self.config[key]["path"]
-        else:
-            auther = "other"
+        auther = self.get_base_path(key)
         title = self.validate_and_normalize_filename(title)
         media_path = f"{auther}/kemono/{service}/{user_id}/[{date.strftime("%Y%m%d")}] [{id}] {title}/{name}"
         return media_path
@@ -196,6 +193,8 @@ class KemonoSpider(BaseSpider):
             yield scrapy.Request(url=url, callback=self.parse, dont_filter=True, cb_kwargs=cb_kwargs)
     
     def _check_download(self, service, pid):
+        if self.force:
+            return False
         sql = f"SELECT * FROM {service} WHERE id = {pid}"
         result = self.cursor.execute(sql).fetchall()
         if result:

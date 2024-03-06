@@ -136,6 +136,10 @@ class BaseFilesPipeline(FilesPipeline):
 
         return filename
 
+    def get_base_path(self, key):
+        return self.config.get(key, {}).get("path", "!other")
+
+
 class ProgressBarsPipeline:
     REQUEST_BAR_DEFAULT = "R"
     UNSHOW_SKIP_BAR = True

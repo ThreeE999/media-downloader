@@ -138,10 +138,8 @@ class TwitterFilesPipeline(BaseFilesPipeline):
         user_id = item['user_screen_name']
         tweet_id = item['tweet_id']
         page = item["file_urls"].index(request.url)
-        if str(user_id) in self.config:
-            media_path = f"{self.config[str(user_id)]['path']}/twitter/{user_id}/{tweet_id}_p{page}{media_ext}"
-        else:
-            media_path = f"other/twitter/{user_id}/{tweet_id}_p{page}{media_ext}"
+        user_path = self.get_base_path(str(user_id))
+        media_path = f"{user_path}/twitter/{user_id}/{tweet_id}_p{page}{media_ext}"
         return media_path
     
     def item_completed(self, results, item, info):
@@ -164,8 +162,6 @@ userMediaApiPar = '{{"userId":"{}","count":{},{}"includePromotedContent":false,"
 
 userInfoApi = 'https://twitter.com/i/api/graphql/Vf8si2dfZ1zmah8ePYPjDQ/UserByScreenNameWithoutResults'
 userInfoApiPar = '{{"screen_name":"{}","withHighlightedLabel":false}}'
-
-hostUrl = 'https://api.twitter.com/1.1/guest/activate.json'
 
 
 class TwitterSpider(BaseSpider):
@@ -300,6 +296,8 @@ class TwitterSpider(BaseSpider):
             yield scrapy.Request(url=url, callback=self.parse, dont_filter=True, priority=3, cb_kwargs=kwargs)
 
     def _check_pid_download(self, pid):
+        if self.force:
+            return False
         sql = f"SELECT * FROM tweet WHERE id = {pid}"
         result = self.cursor.execute(sql).fetchall()
         if result:

@@ -19,6 +19,8 @@ class BaseSpider(scrapy.Spider):
     def _set_command_line_arguments(self):
         # -a 命令行参数补充
         self.sp_user = None   # 只处理单个作者
+        self.sp_id = None   # 处理单个文件
+        self.force = False  # 强制下载，但强制下载也不会覆盖原有文件, 批量处理时慎用，会重新请求元数据
     
     def add_total(self, add):   # 修改总数信号
         self._total += add
