@@ -152,9 +152,9 @@ class ProgressBarsPipeline:
         terminal = manager.term
         if self.UNSHOW_SKIP_BAR:
             bar_format = u'{desc}{desc_pad}{percentage:3.0f}%|{bar}| ' + \
-                u'U:' + terminal.green3(u'{count_0:{len_total}d}') + u' ' + \
-                u'E:' + terminal.red2(u'{count_1:{len_total}d}') + u' ' + \
-                u'S:' + terminal.yellow2(u'{skip_count:{skip_count_len}d}') + u' ' + \
+                u'U:' + terminal.green3(u'{count_0:{len_total}}') + u' ' + \
+                u'E:' + terminal.red2(u'{count_1:{len_total}}') + u' ' + \
+                u'S:' + terminal.yellow2(u'{skip_count:{skip_count_len}}') + u' ' + \
                 u'{count}/{total} ' + \
                 u'[{elapsed}<{eta}, {rate:.2f}{unit_pad}{unit}/s]'
             self.success = manager.counter(total=0, desc='D', unit='p', color='green3', bar_format=bar_format)
@@ -208,11 +208,13 @@ class ProgressBarsPipeline:
                 length = float(body_length)
             except:
                 # 这里会有UNKNOWN_LENGTH的情况,直接不显示了
-                length = 0
+                length = float(0)
                 spider.log(f"body_length: {body_length}, url: {request.url}", logging.DEBUG)
             BAR_FORMAT = '{desc}{desc_pad}{percentage:3.0f}%|{bar}| {count:!.2k}{unit} / {total:!.2k}{unit} ' \
                         '[{elapsed}<{eta}, {rate:!.2k}{unit}/s]'
-            self.request_bar[request_id] = self.manager.counter(total=length, desc=f' {bar_name}', unit='B', bar_format=BAR_FORMAT, leave=False)
+            COUNTER_FMT = u'{desc}{desc_pad}{count} {unit}{unit_pad}' + \
+              u'[{elapsed}, {rate:.2f}{unit_pad}{unit}/s]{fill}'
+            self.request_bar[request_id] = self.manager.counter(total=length, desc=f' {bar_name}', unit='B', bar_format=BAR_FORMAT, leave=False, counter_format=COUNTER_FMT)
     
     def on_bytes_received(self, data, request, spider):
         request_id = id(request)

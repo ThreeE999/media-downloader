@@ -79,7 +79,7 @@ TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
 FEED_EXPORT_ENCODING = "utf-8"
 
 DOWNLOAD_MAXSIZE = 0
-DOWNLOAD_TIMEOUT = 300
+DOWNLOAD_TIMEOUT = 180
 DOWNLOAD_WARNSIZE = 1024 * 1024 * 100  # 设置为你期望的字节数大小，例如 50 MB
 CONCURRENT_ITEMS = 20
 

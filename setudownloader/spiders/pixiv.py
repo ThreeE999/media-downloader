@@ -192,7 +192,7 @@ class PixivSpider(BaseSpider):
         else:           # 按作者ID的模式
             uids = list(self.config.keys())
             if self.sp_user:
-                uids = [self.sp_user]
+                uids = self.sp_user.split(",")
             for uid in uids:
                 url = f"https://www.pixiv.net/ajax/user/{uid}/profile/all"
                 yield scrapy.Request(url=url, callback=self.profile_parse, dont_filter=True, cb_kwargs={"user_id": str(uid)})
